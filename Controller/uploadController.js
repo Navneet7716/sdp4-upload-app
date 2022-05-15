@@ -26,7 +26,7 @@ const upload = multer({
 
 exports.uploadUserFile = upload.single("file");
 
-exports.fileUploader = async (req, res) => {
+exports.fileUploader = async (req, res, next) => {
   try {
     if (!req.file) return next();
 
@@ -54,6 +54,7 @@ exports.fileUploader = async (req, res) => {
 
       let options = {};
       if (ConversionType === "WORD-PDF") {
+        console.log("RAN")
         options = {
           libreofficeBin: "/usr/bin/soffice",
           sourceFile: `${data.Location}`, // .ppt, .pptx, .odp, .key and .pdf
@@ -64,18 +65,20 @@ exports.fileUploader = async (req, res) => {
           // density: 120, //  Optional and default density value is 120
           disableExtensionCheck: true,
         };
-      } else if (ConversionType === "WORD-TXT") {
-        options = {
-          libreofficeBin: "/usr/bin/soffice",
-          sourceFile: `${data.Location}`, // .ppt, .pptx, .odp, .key and .pdf
-          outputDir: `/home/navneet/NodeProjects/converter/converted-files-${ConversionType}`,
-          img: false,
-          // imgExt: "jpg", // Optional and default value png
-          // reSize: 800, //  Optional and default Resize is 1200
-          // density: 120, //  Optional and default density value is 120
-          disableExtensionCheck: true,
-        };
-      } else if (ConversionType === "PPT-PDF") {
+      }
+      //  else if (ConversionType === "WORD-TXT") {
+      //   options = {
+      //     libreofficeBin: "/usr/bin/soffice",
+      //     sourceFile: `${data.Location}`, // .ppt, .pptx, .odp, .key and .pdf
+      //     outputDir: `/home/navneet/NodeProjects/converter/converted-files-${ConversionType}`,
+      //     img: false,
+      //     // imgExt: "jpg", // Optional and default value png
+      //     // reSize: 800, //  Optional and default Resize is 1200
+      //     // density: 120, //  Optional and default density value is 120
+      //     disableExtensionCheck: true,
+      //   };
+      // } 
+      else if (ConversionType === "PPT-PDF") {
         options = {
           libreofficeBin: "/usr/bin/soffice",
           sourceFile: `${data.Location}`, // .ppt, .pptx, .odp, .key and .pdf
@@ -154,9 +157,12 @@ exports.fileUploader = async (req, res) => {
         conversionExtension = "txt";
 
 
-      if (ConversionType != "PDF-PNG" && ConversionType != "PDF-JPG") {
+      if (ConversionType != "PDF-PNG" && ConversionType != "PDF-JPG" && ConversionType != "WORD-TXT") {
           
     console.log("RUNNING")
+
+        console.log("ConversionType " , ConversionType)
+
 
       document
         .convert(options)
@@ -219,6 +225,68 @@ exports.fileUploader = async (req, res) => {
         });
 
     }
+    else if (ConversionType === "WORD-TXT") {
+
+      let coFileName = `original-${
+        req.body.file.split("-")[1]
+      }-file.${conversionExtension}`
+
+      console.log("data.Location " , data.Location)
+
+
+      exec(`soffice --convert-to ${conversionExtension} "${data.Location}"`, (stderr, stdout, stderror) => {
+
+        if (stderr) {
+            console.error(`exec error: ${stderr}`);
+            return res.json({
+                message: "error while converting to image!"
+            })
+        }
+        console.log(stdout)
+        fs.readFile(
+            `/home/navneet/NodeProjects/converter/${coFileName}`,
+            (err, Filedata) => {
+              if (err) {
+                console.log(err);
+                return;
+              }
+
+            
+              let ConvertedFileName = coFileName;
+
+              let params2 = {
+                Bucket: "sdp4-upload",
+                Key: ConvertedFileName,
+                Body: Filedata,
+              };
+
+              console.log("STARTING UPLOADING SECOND FILE 🟢");
+              s3.upload(params2, (error2, data2) => {
+                if (error2) {
+                  console.log(
+                    "Some error while uploading the converted File",
+                    error2
+                  );
+                  return res.json({
+                    message: "Error while uploading the converted File",
+                  });
+                }
+                console.log("UPLOAD DONE 🟢");
+                return res.json({
+                  status: 200,
+                  message: "Success",
+                  publicUrlConvertedFile: data2.Location,
+                  filenameConvertedFile: data2.Key,
+                  publicUrl: data.Location,
+                  filename: data.key,
+                });
+              });
+            }
+          );
+    })
+
+    }
+
     else {
 
         let coFileName = `converted-${
